@@ -1,0 +1,92 @@
+/*
+pd.qcut
+
+First in a series of Excel Lambda implementations of Python Pandas methods.
+
+pd.qcut will create groups, or bins, for a continuous numerical variable. 
+
+
+
+Inputs
+	- x: a one-dimensional vertical array of a continuous variable
+	- q: an integer representing the desired number of bins
+  - [labels]: an optional one-dimensional vertical array of group labels. The number of labels in the array must be equal to q. If no value is provided, SEQUENCE(q) is used as the labels
+  - [return]: either "row labels" for an array the same size as x and in the same order as x, containing the bin label for each row in x, or "groups" for details of the bins creates including frequencies for values of x in each bin
+	
+Returns
+  Either return an array the same size as the array x passed into the function, 
+  or an array representing details about the bins, or groups, created, and frequencies of
+  the data in those bins
+	
+Explanation:
+  
+
+
+
+*/
+pd.qcut =LAMBDA(x,q,[labels],[return],
+  LET(
+    _s,SEQUENCE(ROWS(x)),
+    _x,SORT(CHOOSE({1,2},x,_s),1,1),
+    _xval,INDEX(_x,,1),
+    _xord,INDEX(_x,,2),
+    _q,q,
+    _lbl,IF(ISOMITTED(labels),SEQUENCE(_q),labels),
+    _ret,IF(ISOMITTED(return),"row labels",return),
+    _rnk,SCAN(0,_s,
+          LAMBDA(a,b,
+            IFS(
+              b=1,1,
+              INDEX(_xval,b-1,1)=INDEX(_xval,b,1),a,
+              TRUE,a+1
+            )
+          )
+         ),
+    _mxrank,MAX(_rnk),
+    _brk,_mxrank/_q,
+    _quo,QUOTIENT(_rnk-1,_brk),
+    _xlbl,IF(
+            _q<>ROWS(_lbl),
+            "Label array is not the same size as q",
+            SORTBY(INDEX(_lbl,_quo+1),_xord,1)
+          ),
+    _u_quo,UNIQUE(_quo),
+    _maxs,MAP(_u_quo,LAMBDA(u,MAX(FILTER(_xval,_quo=u)))),
+    _actual_mins,MAP(_u_quo,LAMBDA(u,MIN(FILTER(_xval,_quo=u)))),
+    _freqs,MAP(_u_quo,LAMBDA(u,ROWS(FILTER(_xval,_quo=u)))),
+    _global_min,INDEX(_actual_mins,1,1),
+    _mins,MAKEARRAY(
+            _q,
+            1,
+            LAMBDA(r,c,
+              IF(
+                r=1,
+                _global_min-_global_min*0.01%,
+                INDEX(_maxs,r-1,1)
+              )
+            )
+          ),
+    _grps,CHOOSE(
+            {1,2,3,4,5,6},
+            _lbl,
+            "("&_mins&","&_maxs&"]",
+            _mins,
+            _maxs,
+            "["&_actual_mins&","&_maxs&"]",
+            _freqs
+          ),
+    _h,{"group","range","range_low","range_high","actual_range","frequencies"},
+    _hgrps,MAKEARRAY(
+            _q+1,
+            6,
+            LAMBDA(r,c,
+              IF(
+                r=1,
+                INDEX(_h,1,c),
+                INDEX(_grps,r-1,c)
+              )
+            )
+           ),
+    IF(_ret="row labels",_xlbl,_hgrps)
+  )
+);
