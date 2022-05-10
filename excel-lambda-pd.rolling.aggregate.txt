@@ -1,0 +1,111 @@
+/*
+pd.rolling.aggregate
+
+Calculates a rolling aggregate of a variable where each window is of size window and the function agg is applied to each window
+
+Inputs:
+  x: a single-column numerical variable, sorted in the order the user expects to calculate rolling calculations on
+  window: an integer specifying the window length/width. For example, if window is 3, then the aggregate will be applied over the set of 3 rows ending in the current row
+  agg: a text string specifying which aggregate function should be applied over each window
+  
+Returns:
+  An array with ROWS(x) rows and 1 column containing the result of the aggregation over each window. For the first window-1 rows, the output array will show NA()
+
+*/
+
+pd.rolling.aggregate =LAMBDA(x,window,agg,[min_periods],[center],
+  LET(
+    _x,x,
+    _w,window,
+    _agg,agg,
+    _aggs,{"sum";"average";"max";"min";"stdev.s";"kurt";"skew";"var.s";"median";"sem"},
+    _thk,LAMBDA(x,LAMBDA(x)),
+    _fn_aggs,MAKEARRAY(ROWS(_aggs),1,
+              LAMBDA(r,c,
+                CHOOSE(
+                  r,
+                  _thk(LAMBDA(x,SUM(x))),
+                  _thk(LAMBDA(x,AVERAGE(x))),
+                  _thk(LAMBDA(x,MAX(x))),
+                  _thk(LAMBDA(x,MIN(x))),
+                  _thk(LAMBDA(x,STDEV.S(x))),
+                  _thk(LAMBDA(x,KURT(x))),
+                  _thk(LAMBDA(x,SKEW(x))),
+                  _thk(LAMBDA(x,VAR.S(x))),
+                  _thk(LAMBDA(x,MEDIAN(x))),
+                  _thk(LAMBDA(x,STDEV.S(x)/SQRT(_w)))
+                )
+              )
+             ),
+    _fn,XLOOKUP(_agg,_aggs,_fn_aggs),
+    _mp,IF(ISOMITTED(min_periods),_w,min_periods),
+    _c,IF(ISOMITTED(center),FALSE,center),
+    _i,SEQUENCE(ROWS(x)),
+    _s,SCAN(0,_i,
+          LAMBDA(a,b,
+            IF(
+              b<_w,
+              NA(),
+              _thk(
+                MAKEARRAY(_w,1,
+                  LAMBDA(r,c,
+                    INDEX(_x,b-_w+r)
+                  )
+                )
+              )
+            )
+          )
+        ),
+   _out,SCAN(0,_i,LAMBDA(a,b,_fn()(INDEX(_s,b,1)()))),
+   _out
+  )
+);
+  
+  
+  
+  
+  
+/*
+pd.rolling.aggregates
+
+Calculates rolling aggregates of a variable using an arbitrary set of window lengths and aggregate function
+
+Inputs:
+  x: a single-column numerical variable, sorted in the order the user expects to calculate rolling calculations on
+  windows: a 1-dimensional array of window lengths. A window is an integer that describes the length, in terms of array elements or spreadsheet rows, of a window over which an aggregate will be calculated. For example, if a window is 3, then the aggregate will be applied over the set of 3 rows ending in the current row. Each element in windows maps to an element in aggs, allowing for either differing window sizes per aggregation, or different window sizes for the same aggregation
+  aggs: a 1-dimensional array of aggregate functions to be applied to each window. Each aggregate maps to an element of windows. Supported aggregates are shown in the _aggs variable in pd.rolling.aggregate. 
+  
+Returns:
+  An array with ROWS(x) rows and MAX(COUNT(windows),COUNTA(aggs)) columns. If COUNT(windows) <> COUNTA(aggs), then the smaller array will be resized to the length of the longer array, with additional elements being filled with the right-most/bottom-most element of the original array. 
+  For example:
+  windows = {2,3,4}
+  aggs = {"sum"}
+  
+  aggs will be resized to three elements and each new element will be filled with the right-most element of the existing array, so:
+  {"sum","sum","sum"}
+  
+  The net result is that the output array will have three columns, showing respectively rolling 2 sum, rolling 3 sum and rolling 4 sum of x
+
+*/
+
+pd.rolling.aggregates =LAMBDA(x,windows,aggs,
+  LET(
+    _tr,LAMBDA(arr,LET(x,FILTER(arr,arr<>""),IF(ROWS(x)=1,TRANSPOSE(x),x))),
+    _a,_tr(aggs),
+    _w,_tr(windows),
+    _resize,ROWS(_a)<>ROWS(_w),
+    _rs,LAMBDA(arr,resize_to,MAKEARRAY(resize_to,1,LAMBDA(r,c,IF(r<=ROWS(arr),INDEX(arr,r,1),INDEX(arr,ROWS(arr),1))))),
+    _ms,MAX(ROWS(_a),ROWS(_w)),
+    _ar,IF(_resize,_rs(_a,_ms),_a),
+    _wr,IF(_resize,_rs(_w,_ms),_w),
+    _out,
+    MAKEARRAY(
+      ROWS(x),
+      _ms,
+      LAMBDA(r,c,
+        INDEX(pd.rolling.aggregate(x,INDEX(_wr,c,1),INDEX(_ar,c,1)),r,1)
+      )
+    ),
+    _out
+  )
+);
